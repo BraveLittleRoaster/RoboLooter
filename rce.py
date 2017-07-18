@@ -149,11 +149,11 @@ def cve_2013_2251(url, command):
 
         if "65a3e764068d229ee9d62906aee6cab72f96bacc" in result.read():
             sys.stdout.write("\033[1;31m")
-            logging.info("[!] %s is VULN to CVE-2017-5638" % url.strip('\n'))
+            logging.info("[!] %s is VULN to CVE-2013-2251" % url.strip('\n'))
             sys.stdout.write("\033[0;0m")
             return True
         else:
-            logging.debug("[-] %s is NOT vulnerable." % url.strip('\n'))
+            logging.debug("[-] %s is NOT vulnerable to CVE-2013-2251." % url.strip('\n'))
             return False
 
 
@@ -203,7 +203,7 @@ def cve_2017_5638(url, cmd):
         sys.stdout.write("\033[0;0m")
         return True
     else:
-        logging.debug("[-] %s is NOT vulnerable." % url.strip('\n'))
+        logging.debug("[-] %s is NOT vulnerable to CVE-2017-5638." % url.strip('\n'))
         return False
 
 
