@@ -18,12 +18,18 @@ def post(url, data, headers):
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        response = urllib2.urlopen(url, data, headers=headers, context=ctx, timeout=5)
+        request = urllib2.Request(url, data, headers=headers)
+        response = urllib2.urlopen(request, context=ctx, timeout=5)
+        result = re.compile('[\\x00-\\x08\\x0b-\\x0c\\x0e-\\x1f]').sub('', response.read())
+
+        if result is not None:
+            return result
+        else:
+            logging.debug("[-] %s returned a null response." % url.strip('\n'))
+            return False
+
     except Exception as err:
         logging.error("[-] ERROR at %s; %s" % (url, err))
-    result = re.compile('[\\x00-\\x08\\x0b-\\x0c\\x0e-\\x1f]').sub('', response.read())
-
-    return result
 
 
 def getAgent():
